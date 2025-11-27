@@ -1,5 +1,7 @@
+# services/hall_service.py
+
 import json
-from typing import List, Dict
+from typing import List, Dict, Optional
 from core.db import get_connection
 
 
@@ -38,7 +40,6 @@ def init_default_halls() -> None:
 
 
 def get_all_halls() -> List[Dict]:
-    """Returnează toate sălile ca liste de dict-uri."""
     conn = get_connection()
     cur = conn.cursor()
 
@@ -52,8 +53,35 @@ def get_all_halls() -> List[Dict]:
             {
                 "id": hall_id,
                 "name": name,
-                "layout_json": layout_json,  # string, putem parsa când avem nevoie
+                "layout_json": layout_json,
             }
         )
 
     return halls
+
+
+def get_hall(hall_id: int) -> Optional[Dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        "SELECT id, name, layout_json FROM halls WHERE id = ?;",
+        (hall_id,),
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if row is None:
+        return None
+
+    hid, name, layout_json = row
+    try:
+        layout = json.loads(layout_json)
+    except json.JSONDecodeError:
+        layout = {}
+
+    return {
+        "id": hid,
+        "name": name,
+        "layout": layout,  # ex: {"rows": 10, "cols": 12}
+    }

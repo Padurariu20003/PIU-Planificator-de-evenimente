@@ -1,3 +1,5 @@
+# ui/admin_events_view.py
+
 from typing import List, Dict, Optional
 
 from PySide6.QtWidgets import (
@@ -17,7 +19,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
-from services import event_service, hall_service
+from services import event_service, hall_service, booking_service
+
+
 
 
 class EventsTableModel(QAbstractTableModel):
@@ -30,7 +34,7 @@ class EventsTableModel(QAbstractTableModel):
         return len(self._events)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return 4  # titlu, data, ora, sala
+        return 4  
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid() or role != Qt.DisplayRole:
@@ -77,8 +81,62 @@ class EventsTableModel(QAbstractTableModel):
         return None
 
 
-class EventDialog(QDialog):
 
+
+class BookingsTableModel(QAbstractTableModel):
+    def __init__(self, bookings: List[Dict], parent=None) -> None:
+        super().__init__(parent)
+        self._bookings = bookings
+
+    def rowCount(self, parent=QModelIndex()) -> int:
+        return len(self._bookings)
+
+    def columnCount(self, parent=QModelIndex()) -> int:
+        return 4
+
+    def data(self, index: QModelIndex, role=Qt.DisplayRole):
+        if not index.isValid() or role != Qt.DisplayRole:
+            return None
+
+        booking = self._bookings[index.row()]
+        col = index.column()
+
+        if col == 0:
+            return booking["name"]
+        elif col == 1:
+            return booking["email"]
+        elif col == 2:
+            return ", ".join(booking.get("seats", []))
+        elif col == 3:
+            return booking["created_at"]
+
+        return None
+
+    def headerData(self, section: int, orientation, role=Qt.DisplayRole):
+        if role != Qt.DisplayRole:
+            return None
+
+        if orientation == Qt.Horizontal:
+            if section == 0:
+                return "Nume"
+            if section == 1:
+                return "Email"
+            if section == 2:
+                return "Locuri"
+            if section == 3:
+                return "Creat la"
+
+        return None
+
+    def set_bookings(self, bookings: List[Dict]) -> None:
+        self.beginResetModel()
+        self._bookings = bookings
+        self.endResetModel()
+
+
+
+
+class EventDialog(QDialog):
     def __init__(self, halls: List[Dict], event: Optional[Dict] = None, parent=None):
         super().__init__(parent)
 
@@ -109,7 +167,6 @@ class EventDialog(QDialog):
             self.date_edit.setText(event["date"])
             self.time_edit.setText(event["time"])
 
-
             for i in range(self.hall_combo.count()):
                 if self.hall_combo.itemData(i) == event["hall_id"]:
                     self.hall_combo.setCurrentIndex(i)
@@ -133,6 +190,43 @@ class EventDialog(QDialog):
         }
 
 
+
+
+class BookingsDialog(QDialog):
+    def __init__(self, event: Dict, parent=None) -> None:
+        super().__init__(parent)
+
+        self.setWindowTitle("Rezervari pentru eveniment")
+
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            f"Rezervări pentru evenimentul:<br>"
+            f"<b>{event['title']}</b> ({event['date']} {event['time']}, {event['hall_name']})"
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        self.table_view = QTableView()
+        layout.addWidget(self.table_view)
+
+        bookings = booking_service.list_bookings_for_event(event["id"])
+        self._model = BookingsTableModel(bookings, self)
+        self.table_view.setModel(self._model)
+        self.table_view.setSelectionBehavior(QTableView.SelectRows)
+        self.table_view.setSelectionMode(QTableView.SingleSelection)
+        self.table_view.setEditTriggers(QTableView.NoEditTriggers)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        buttons.button(QDialogButtonBox.Close).clicked.connect(self.close)
+
+        layout.addWidget(buttons)
+
+
+
+
 class AdminEventsView(QWidget):
     back_to_login = Signal()
 
@@ -146,21 +240,21 @@ class AdminEventsView(QWidget):
         title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         layout.addWidget(title_label)
 
-        # tabelul cu evenimente
         self.table_view = QTableView()
         layout.addWidget(self.table_view)
 
-        # butoane
         button_layout = QHBoxLayout()
 
-        self.add_button = QPushButton("Add")
-        self.edit_button = QPushButton("Edit")
-        self.delete_button = QPushButton("Delete")
-        self.back_button = QPushButton("Back to Login")
+        self.add_button = QPushButton("Adaugă")
+        self.edit_button = QPushButton("Editează")
+        self.delete_button = QPushButton("Șterge")
+        self.view_bookings_button = QPushButton("Vezi rezervări")
+        self.back_button = QPushButton("Înapoi la login")
 
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
         button_layout.addWidget(self.delete_button)
+        button_layout.addWidget(self.view_bookings_button)
         button_layout.addStretch()
         button_layout.addWidget(self.back_button)
 
@@ -178,6 +272,7 @@ class AdminEventsView(QWidget):
         self.add_button.clicked.connect(self.on_add_clicked)
         self.edit_button.clicked.connect(self.on_edit_clicked)
         self.delete_button.clicked.connect(self.on_delete_clicked)
+        self.view_bookings_button.clicked.connect(self.on_view_bookings_clicked)
         self.back_button.clicked.connect(self.back_to_login.emit)
 
 
@@ -264,3 +359,16 @@ class AdminEventsView(QWidget):
         if reply == QMessageBox.Yes:
             event_service.delete_event(event["id"])
             self.refresh_events()
+
+    def on_view_bookings_clicked(self) -> None:
+        event = self.get_selected_event()
+        if event is None:
+            QMessageBox.information(
+                self,
+                "Informație",
+                "Selectați mai întâi un eveniment din listă.",
+            )
+            return
+
+        dialog = BookingsDialog(event, parent=self)
+        dialog.exec()

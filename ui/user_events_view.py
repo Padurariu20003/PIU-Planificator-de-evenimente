@@ -1,3 +1,5 @@
+# ui/user_events_view.py
+
 from typing import Optional, Dict, List
 
 from PySide6.QtWidgets import (
@@ -17,50 +19,75 @@ from PySide6.QtCore import Qt, Signal
 
 from services import event_service
 from services import booking_service
-from .admin_events_view import EventsTableModel  # folosim același model ca la admin
+from .admin_events_view import EventsTableModel  
+from .seatmap_view import SeatSelectionDialog
 
 
-class BookingDialog(QDialog):
+class BookingDialog(QDialog): 
+
     def __init__(self, event: Dict, parent=None):
         super().__init__(parent)
 
         self.setWindowTitle("Rezervare locuri")
 
         self._event = event
+        self.selected_seats: List[str] = []
 
         layout = QFormLayout(self)
 
-        self.name_edit = QLineEdit()
-        self.email_edit = QLineEdit()
-        self.seats_edit = QLineEdit()
-
-        self.seats_edit.setPlaceholderText("Ex: A1,A2,A3")
-
         event_label = QLabel(
-            f"Eveniment: <b>{event['title']}</b> ({event['date']} {event['time']}, {event['hall_name']})"
+            f"Eveniment: <b>{event['title']}</b> "
+            f"({event['date']} {event['time']}, {event['hall_name']})"
         )
         event_label.setWordWrap(True)
 
         layout.addRow(event_label)
+
+        self.name_edit = QLineEdit()
+        self.email_edit = QLineEdit()
+
+        self.seats_display = QLineEdit()
+        self.seats_display.setReadOnly(True)
+        self.seats_display.setPlaceholderText("Niciun loc selectat")
+
+        self.select_seats_button = QPushButton("Selectează locuri...")
+
         layout.addRow("Nume:", self.name_edit)
         layout.addRow("Email:", self.email_edit)
-        layout.addRow("Locuri (ex. A1,A2):", self.seats_edit)
+        layout.addRow("Locuri selectate:", self.seats_display)
+        layout.addRow("", self.select_seats_button)
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            parent=self,
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
         layout.addRow(buttons)
 
+        self.select_seats_button.clicked.connect(self.on_select_seats_clicked)
+
+    def on_select_seats_clicked(self) -> None:
+        dialog = SeatSelectionDialog(self._event, parent=self)
+        if dialog.exec() == QDialog.Accepted:
+            seats = dialog.get_selected_seats()
+            if not seats:
+                QMessageBox.warning(
+                    self,
+                    "Atenție",
+                    "Nu ați selectat niciun loc.",
+                )
+                return
+
+            self.selected_seats = seats
+            self.seats_display.setText(", ".join(seats))
+
     def get_data(self) -> Dict:
-        seats_raw = self.seats_edit.text()
-        seats_list = [s.strip() for s in seats_raw.split(",") if s.strip()]
         return {
             "name": self.name_edit.text().strip(),
             "email": self.email_edit.text().strip(),
-            "seats": seats_list,
+            "seats": self.selected_seats,
         }
 
 
@@ -78,7 +105,8 @@ class UserEventsView(QWidget):
         main_layout.addWidget(title_label)
 
         info_label = QLabel(
-            "Selectați un eveniment din listă și apăsați pe „Rezervă locuri” pentru a face o rezervare."
+            "Selectați un eveniment din listă și apăsați pe „Rezervă locuri” "
+            "pentru a selecta locurile pe hartă și a face o rezervare."
         )
         info_label.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(info_label)
@@ -143,7 +171,7 @@ class UserEventsView(QWidget):
             QMessageBox.warning(
                 self,
                 "Eroare",
-                "Completați numele, emailul și cel puțin un loc.",
+                "Completați numele, emailul și selectați cel puțin un loc.",
             )
             return
 
