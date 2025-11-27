@@ -1,5 +1,7 @@
 import hashlib
+import sqlite3
 from typing import Optional
+
 from core.db import get_connection
 
 
@@ -26,6 +28,32 @@ def init_default_admin() -> None:
         conn.commit()
 
     conn.close()
+
+
+def create_user(email: str, password: str) -> None:
+    email = (email or "").strip()
+    password = password or ""
+
+    if not email or not password:
+        raise ValueError("Email si parola obligatorii.")
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    try:
+        cur.execute(
+            "INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'user');",
+            (email, hash_password(password)),
+        )
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError("Exista deja un cont cu acest email.")
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 def login(email: str, password: str) -> Optional[str]:

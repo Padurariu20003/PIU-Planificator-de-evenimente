@@ -245,11 +245,11 @@ class AdminEventsView(QWidget):
 
         button_layout = QHBoxLayout()
 
-        self.add_button = QPushButton("Adaugă")
-        self.edit_button = QPushButton("Editează")
-        self.delete_button = QPushButton("Șterge")
-        self.view_bookings_button = QPushButton("Vezi rezervări")
-        self.back_button = QPushButton("Înapoi la login")
+        self.add_button = QPushButton("Adauga")
+        self.edit_button = QPushButton("Editeaza")
+        self.delete_button = QPushButton("Sterge")
+        self.view_bookings_button = QPushButton("Vezi rezervari")
+        self.back_button = QPushButton("Inapoi la login")
 
         button_layout.addWidget(self.add_button)
         button_layout.addWidget(self.edit_button)
@@ -291,7 +291,7 @@ class AdminEventsView(QWidget):
         halls = hall_service.get_all_halls()
         if not halls:
             QMessageBox.warning(
-                self, "Eroare", "Nu există nicio sală definită. Verificați baza de date."
+                self, "Eroare", "Nu exista nicio sala definita. Verificati baza de date."
             )
             return
 
@@ -300,7 +300,7 @@ class AdminEventsView(QWidget):
             data = dialog.get_data()
             if not data["title"] or not data["date"] or not data["time"]:
                 QMessageBox.warning(
-                    self, "Eroare", "Titlul, data și ora sunt obligatorii."
+                    self, "Eroare", "Titlul, data si ora sunt obligatorii."
                 )
                 return
 
@@ -317,7 +317,7 @@ class AdminEventsView(QWidget):
         event = self.get_selected_event()
         if event is None:
             QMessageBox.information(
-                self, "Informație", "Selectați mai întâi un eveniment din listă."
+                self, "Informatie", "Selectati mai intai un eveniment din lista."
             )
             return
 
@@ -327,7 +327,7 @@ class AdminEventsView(QWidget):
             data = dialog.get_data()
             if not data["title"] or not data["date"] or not data["time"]:
                 QMessageBox.warning(
-                    self, "Eroare", "Titlul, data și ora sunt obligatorii."
+                    self, "Eroare", "Titlul, data si ora sunt obligatorii."
                 )
                 return
 
@@ -345,14 +345,14 @@ class AdminEventsView(QWidget):
         event = self.get_selected_event()
         if event is None:
             QMessageBox.information(
-                self, "Informație", "Selectați mai întâi un eveniment din listă."
+                self, "Informatie", "Selectati mai intai un eveniment din lista."
             )
             return
 
         reply = QMessageBox.question(
             self,
-            "Confirmare ștergere",
-            f"Sigur doriți să ștergeți evenimentul '{event['title']}'?",
+            "Confirmare stergere",
+            f"Sigur doriti sa stergeti evenimentul '{event['title']}'?",
             QMessageBox.Yes | QMessageBox.No,
         )
 
@@ -365,8 +365,8 @@ class AdminEventsView(QWidget):
         if event is None:
             QMessageBox.information(
                 self,
-                "Informație",
-                "Selectați mai întâi un eveniment din listă.",
+                "Informatie",
+                "Selectati mai antai un eveniment din lista.",
             )
             return
 

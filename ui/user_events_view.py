@@ -1,5 +1,3 @@
-# ui/user_events_view.py
-
 from typing import Optional, Dict, List
 
 from PySide6.QtWidgets import (
@@ -15,16 +13,15 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
-from services import event_service
-from services import booking_service
-from .admin_events_view import EventsTableModel  
+from services import event_service, booking_service
+from .admin_events_view import EventsTableModel
 from .seatmap_view import SeatSelectionDialog
+from core import session
 
 
-class BookingDialog(QDialog): 
-
+class BookingDialog(QDialog):
     def __init__(self, event: Dict, parent=None):
         super().__init__(parent)
 
@@ -50,7 +47,7 @@ class BookingDialog(QDialog):
         self.seats_display.setReadOnly(True)
         self.seats_display.setPlaceholderText("Niciun loc selectat")
 
-        self.select_seats_button = QPushButton("Selectează locuri...")
+        self.select_seats_button = QPushButton("Selecteaza locuri...")
 
         layout.addRow("Nume:", self.name_edit)
         layout.addRow("Email:", self.email_edit)
@@ -75,8 +72,8 @@ class BookingDialog(QDialog):
             if not seats:
                 QMessageBox.warning(
                     self,
-                    "Atenție",
-                    "Nu ați selectat niciun loc.",
+                    "Atentie",
+                    "Nu ati selectat niciun loc.",
                 )
                 return
 
@@ -91,6 +88,93 @@ class BookingDialog(QDialog):
         }
 
 
+class MyBookingsTableModel(QAbstractTableModel):
+    def __init__(self, bookings: List[Dict], parent=None) -> None:
+        super().__init__(parent)
+        self._bookings = bookings
+
+    def rowCount(self, parent=QModelIndex()) -> int:
+        return len(self._bookings)
+
+    def columnCount(self, parent=QModelIndex()) -> int:
+        return 5
+
+    def data(self, index: QModelIndex, role=Qt.DisplayRole):
+        if not index.isValid() or role != Qt.DisplayRole:
+            return None
+
+        booking = self._bookings[index.row()]
+        col = index.column()
+
+        if col == 0:
+            return booking["event_title"]
+        elif col == 1:
+            return f"{booking['event_date']} {booking['event_time']}"
+        elif col == 2:
+            return booking["hall_name"]
+        elif col == 3:
+            return ", ".join(booking.get("seats", []))
+        elif col == 4:
+            return booking["created_at"]
+
+        return None
+
+    def headerData(self, section: int, orientation, role=Qt.DisplayRole):
+        if role != Qt.DisplayRole:
+            return None
+
+        if orientation == Qt.Horizontal:
+            if section == 0:
+                return "Eveniment"
+            if section == 1:
+                return "Data/Ora"
+            if section == 2:
+                return "Sală"
+            if section == 3:
+                return "Locuri"
+            if section == 4:
+                return "Creat la"
+
+        return None
+
+    def set_bookings(self, bookings: List[Dict]) -> None:
+        self.beginResetModel()
+        self._bookings = bookings
+        self.endResetModel()
+
+
+class UserBookingsDialog(QDialog):
+    def __init__(self, email: str, parent=None) -> None:
+        super().__init__(parent)
+
+        self.setWindowTitle("Rezervarile mele")
+
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(
+            f"Rezervarile pentru contul:<br><b>{email}</b>"
+        )
+        info_label.setWordWrap(True)
+        layout.addWidget(info_label)
+
+        self.table_view = QTableView()
+        layout.addWidget(self.table_view)
+
+        bookings = booking_service.list_bookings_for_email(email)
+        self._model = MyBookingsTableModel(bookings, self)
+        self.table_view.setModel(self._model)
+        self.table_view.setSelectionBehavior(QTableView.SelectRows)
+        self.table_view.setSelectionMode(QTableView.SingleSelection)
+        self.table_view.setEditTriggers(QTableView.NoEditTriggers)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
+        buttons.rejected.connect(self.reject)
+        buttons.accepted.connect(self.accept)
+        buttons.button(QDialogButtonBox.Close).clicked.connect(self.close)
+
+        layout.addWidget(buttons)
+
+
 class UserEventsView(QWidget):
     back_to_login = Signal()
 
@@ -99,16 +183,18 @@ class UserEventsView(QWidget):
 
         main_layout = QVBoxLayout(self)
 
-        title_label = QLabel("Listă evenimente - Utilizator")
+        title_label = QLabel("Lista evenimente - Utilizator")
         title_label.setAlignment(Qt.AlignCenter)
         title_label.setStyleSheet("font-size: 16px; font-weight: bold;")
         main_layout.addWidget(title_label)
 
         info_label = QLabel(
-            "Selectați un eveniment din listă și apăsați pe „Rezervă locuri” "
-            "pentru a selecta locurile pe hartă și a face o rezervare."
+            "Selectati un eveniment din lista si apasasi pe „Rezerva locuri” "
+            "pentru a selecta locurile pe harta si a face o rezervare.\n"
+            "Puteti vedea si „Rezervarile mele” facute cu email-ul dvs."
         )
         info_label.setAlignment(Qt.AlignCenter)
+        info_label.setWordWrap(True)
         main_layout.addWidget(info_label)
 
         self.table_view = QTableView()
@@ -116,12 +202,14 @@ class UserEventsView(QWidget):
 
         button_layout = QHBoxLayout()
 
-        self.book_button = QPushButton("Rezervă locuri")
-        self.refresh_button = QPushButton("Reîncarcă lista")
-        self.back_button = QPushButton("Înapoi la login")
+        self.book_button = QPushButton("Rezerva locuri")
+        self.refresh_button = QPushButton("Reincarca lista")
+        self.my_bookings_button = QPushButton("Rezervarile mele")
+        self.back_button = QPushButton("Inapoi la login")
 
         button_layout.addWidget(self.book_button)
         button_layout.addWidget(self.refresh_button)
+        button_layout.addWidget(self.my_bookings_button)
         button_layout.addStretch()
         button_layout.addWidget(self.back_button)
 
@@ -136,6 +224,7 @@ class UserEventsView(QWidget):
 
         self.book_button.clicked.connect(self.on_book_clicked)
         self.refresh_button.clicked.connect(self.refresh_events)
+        self.my_bookings_button.clicked.connect(self.on_my_bookings_clicked)
         self.back_button.clicked.connect(self.back_to_login.emit)
 
         self.refresh_events()
@@ -151,14 +240,13 @@ class UserEventsView(QWidget):
             return None
         return self._model.get_event_at_row(index.row())
 
-
     def on_book_clicked(self) -> None:
         event = self.get_selected_event()
         if event is None:
             QMessageBox.information(
                 self,
-                "Informație",
-                "Selectați mai întâi un eveniment din listă.",
+                "Informatie",
+                "Selectati mai intai un eveniment din lista.",
             )
             return
 
@@ -171,7 +259,7 @@ class UserEventsView(QWidget):
             QMessageBox.warning(
                 self,
                 "Eroare",
-                "Completați numele, emailul și selectați cel puțin un loc.",
+                "Completati numele, emailul si selectati cel putin un loc.",
             )
             return
 
@@ -185,13 +273,37 @@ class UserEventsView(QWidget):
         except ValueError as ex:
             QMessageBox.critical(
                 self,
-                "Rezervare eșuată",
+                "Rezervare esuata",
                 str(ex),
             )
             return
 
         QMessageBox.information(
             self,
-            "Rezervare reușită",
-            "Rezervarea a fost înregistrată cu succes.",
+            "Rezervare reusita",
+            "Rezervarea a fost inregistrata cu succes.",
         )
+
+    def on_my_bookings_clicked(self) -> None:
+        email, role = session.get_current_user()
+        if not email:
+            QMessageBox.information(
+                self,
+                "Informatie",
+                "Functia „Rezervarile mele” este disponibila doar pentru "
+                "utilizatorii autentificati cu email.\n"
+                "Creati un cont prin „Inregistreaza-te” si autentificati-va.",
+            )
+            return
+
+        bookings = booking_service.list_bookings_for_email(email)
+        if not bookings:
+            QMessageBox.information(
+                self,
+                "Rezervarile mele",
+                "Nu aveti nicio rezervare inregistrata cu acest email.",
+            )
+            return
+
+        dialog = UserBookingsDialog(email, parent=self)
+        dialog.exec()

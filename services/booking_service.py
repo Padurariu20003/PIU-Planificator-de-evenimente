@@ -21,7 +21,7 @@ def list_bookings_for_event(event_id: int) -> List[Dict]:
     rows = cur.fetchall()
     conn.close()
 
-    bookings = []
+    bookings: List[Dict] = []
     for booking_id, name, email, seats_json, created_at in rows:
         try:
             seats = json.loads(seats_json)
@@ -41,10 +41,72 @@ def list_bookings_for_event(event_id: int) -> List[Dict]:
     return bookings
 
 
+def list_bookings_for_email(email: str) -> List[Dict]:
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute(
+        """
+        SELECT
+            b.id,
+            b.name,
+            b.email,
+            b.seats_json,
+            b.created_at,
+            e.title,
+            e.date,
+            e.time,
+            h.name AS hall_name
+        FROM bookings b
+        JOIN events e ON b.event_id = e.id
+        JOIN halls h ON e.hall_id = h.id
+        WHERE b.email = ?
+        ORDER BY b.created_at DESC;
+        """,
+        (email,),
+    )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    bookings: List[Dict] = []
+    for (
+        booking_id,
+        name,
+        email_val,
+        seats_json,
+        created_at,
+        event_title,
+        event_date,
+        event_time,
+        hall_name,
+    ) in rows:
+        try:
+            seats = json.loads(seats_json)
+        except json.JSONDecodeError:
+            seats = []
+
+        bookings.append(
+            {
+                "id": booking_id,
+                "name": name,
+                "email": email_val,
+                "seats": seats,
+                "created_at": created_at,
+                "event_title": event_title,
+                "event_date": event_date,
+                "event_time": event_time,
+                "hall_name": hall_name,
+            }
+        )
+
+    return bookings
+
+
 def create_booking(event_id: int, name: str, email: str, seats: List[str]) -> None:
     normalized_seats = [s.strip().upper() for s in seats if s.strip()]
     if not normalized_seats:
-        raise ValueError("Trebuie să selectați cel puțin un loc.")
+        raise ValueError("Trebuie sa selectati cel putin un loc.")
 
     conn = get_connection()
     cur = conn.cursor()
@@ -68,7 +130,7 @@ def create_booking(event_id: int, name: str, email: str, seats: List[str]) -> No
     if conflict:
         conn.close()
         raise ValueError(
-            f"Următoarele locuri sunt deja rezervate: {', '.join(sorted(conflict))}"
+            f"Urmatoarele locuri sunt deja rezervate: {', '.join(sorted(conflict))}"
         )
 
     created_at = datetime.now().isoformat(timespec="seconds")
