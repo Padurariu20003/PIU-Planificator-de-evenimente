@@ -1,4 +1,5 @@
 from PySide6.QtWidgets import (
+    QApplication,
     QWidget,
     QLabel,
     QPushButton,
@@ -97,20 +98,58 @@ class LoginView(QWidget):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
 
+        self.setStyleSheet("""
+        QLabel#TitleLabel {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        QLabel#InfoLabel {
+            color: #cccccc;
+        }
+        QLineEdit {
+            padding: 10px 16px;
+            font-size: 14px;
+            border-radius: 6px;
+        }
+        QPushButton {
+            padding: 6px 16px;
+            border-radius: 5px;
+            border: 1px solid #666666;
+        }
+        QPushButton:hover {
+            border: 2px solid #aaaaaa;
+        }
+        QPushButton:pressed {
+            border: 2px solid #ffffff;
+        }
+        QPushButton:focus {
+            border: 2px solid #ffffff;
+        }
+        """)
+
         main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(40, 30, 40, 30)
+
+        main_layout.addStretch()
+
+        center_widget = QWidget()
+        center_layout = QVBoxLayout(center_widget)
+        center_layout.setSpacing(12)
+        center_layout.setAlignment(Qt.AlignTop | Qt.AlignHCenter)
 
         title_label = QLabel("EventEase - Autentificare")
+        title_label.setObjectName("TitleLabel")
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold;")
-        main_layout.addWidget(title_label)
+        center_layout.addWidget(title_label)
 
         info_label = QLabel(
-            "Introduceti emailul si parola pentru autentificare.\n"
-            "Cont implicit administrator: admin@eventease.local / parola: admin"
+            "Introduceti emailul si parola pentru autentificare.<br>"
+            "Cont implicit administrator: <b>admin@eventease.local</b> / parola: <b>admin</b>"
         )
+        info_label.setObjectName("InfoLabel")
         info_label.setAlignment(Qt.AlignCenter)
         info_label.setWordWrap(True)
-        main_layout.addWidget(info_label)
+        center_layout.addWidget(info_label)
 
         self.email_edit = QLineEdit()
         self.email_edit.setPlaceholderText("Email")
@@ -121,29 +160,37 @@ class LoginView(QWidget):
         self.password_edit.setEchoMode(QLineEdit.Password)
         self.password_edit.setText("admin")
 
-        main_layout.addWidget(self.email_edit)
-        main_layout.addWidget(self.password_edit)
+        for w in (self.email_edit, self.password_edit):
+            w.setMinimumWidth(350)
+            w.setMaximumWidth(400)
 
-        main_layout.addStretch()
+        center_layout.addWidget(self.email_edit, 0, Qt.AlignHCenter)
+        center_layout.addWidget(self.password_edit, 0, Qt.AlignHCenter)
 
         buttons_layout = QHBoxLayout()
+        buttons_layout.setSpacing(10)
 
         self.login_button = QPushButton("Autentificare")
         self.register_button = QPushButton("Inregistreaza-te")
         self.guest_button = QPushButton("Intra ca vizitator")
+        self.exit_button = QPushButton("Iesire")
 
         buttons_layout.addWidget(self.login_button)
         buttons_layout.addWidget(self.register_button)
-        buttons_layout.addStretch()
         buttons_layout.addWidget(self.guest_button)
+        buttons_layout.addStretch()
+        buttons_layout.addWidget(self.exit_button)
 
-        main_layout.addLayout(buttons_layout)
+        center_layout.addLayout(buttons_layout)
+
+        main_layout.addWidget(center_widget, 0, Qt.AlignHCenter)
 
         main_layout.addStretch()
 
         self.login_button.clicked.connect(self.on_login_clicked)
         self.register_button.clicked.connect(self.on_register_clicked)
         self.guest_button.clicked.connect(self.on_guest_clicked)
+        self.exit_button.clicked.connect(self.on_exit_clicked)
 
     def on_login_clicked(self) -> None:
         email = self.email_edit.text().strip()
@@ -181,3 +228,8 @@ class LoginView(QWidget):
     def on_guest_clicked(self) -> None:
         session.set_current_user("", "user")
         self.login_as_user.emit()
+
+    def on_exit_clicked(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.quit()

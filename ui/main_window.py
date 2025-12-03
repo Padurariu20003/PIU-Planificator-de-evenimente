@@ -1,42 +1,84 @@
-from PySide6.QtWidgets import QMainWindow, QStackedWidget
+from PySide6.QtWidgets import (
+    QMainWindow,
+    QStackedWidget,
+    QMessageBox,
+)
+from PySide6.QtCore import Qt
+
 from .login_view import LoginView
 from .admin_events_view import AdminEventsView
 from .user_events_view import UserEventsView
+from core import session
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
-        super().__init__()
 
-        self.setWindowTitle("EventEase")
-        self.resize(800, 600)
+    PAGE_LOGIN = 0
+    PAGE_ADMIN = 1
+    PAGE_USER = 2
 
-        self.stack = QStackedWidget()
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        self.setWindowTitle("EventEase - Planificator de evenimente")
+        self.resize(900, 600)
+
+        self.stack = QStackedWidget(self)
         self.setCentralWidget(self.stack)
 
         self.login_view = LoginView()
-        self.stack.addWidget(self.login_view)
-
         self.admin_view = AdminEventsView()
-        self.stack.addWidget(self.admin_view)
-
         self.user_view = UserEventsView()
+
+        self.stack.addWidget(self.login_view)
+        self.stack.addWidget(self.admin_view)
         self.stack.addWidget(self.user_view)
 
-        self.stack.setCurrentWidget(self.login_view)
+        self.login_view.login_as_admin.connect(self.on_login_admin)
+        self.login_view.login_as_user.connect(self.on_login_user)
 
-        self.login_view.login_as_admin.connect(self.show_admin_view)
-        self.login_view.login_as_user.connect(self.show_user_view)
+        self.admin_view.back_to_login.connect(self.on_logout)
+        self.user_view.back_to_login.connect(self.on_logout)
 
-        self.admin_view.back_to_login.connect(self.show_login_view)
-        self.user_view.back_to_login.connect(self.show_login_view)
+        self.status = self.statusBar()
+        self.update_status_bar()
 
+        self.stack.setCurrentIndex(self.PAGE_LOGIN)
 
-    def show_login_view(self) -> None:
-        self.stack.setCurrentWidget(self.login_view)
+    def update_status_bar(self) -> None:
+        email, role = session.get_current_user()
 
-    def show_admin_view(self) -> None:
-        self.stack.setCurrentWidget(self.admin_view)
+        if not email and not role:
+            self.status.showMessage("Neautentificat", 0)
+        elif role == "admin":
+            self.status.showMessage(f"Autentificat ca administrator: {email}", 0)
+        else:
+            if email:
+                self.status.showMessage(f"Autentificat ca utilizator: {email}", 0)
+            else:
+                self.status.showMessage("Utilizator vizitator (fara email)", 0)
 
-    def show_user_view(self) -> None:
-        self.stack.setCurrentWidget(self.user_view)
+    def on_login_admin(self) -> None:
+        self.stack.setCurrentIndex(self.PAGE_ADMIN)
+        self.update_status_bar()
+
+    def on_login_user(self) -> None:
+        self.stack.setCurrentIndex(self.PAGE_USER)
+        self.update_status_bar()
+
+    def on_logout(self) -> None:
+        reply = QMessageBox.question(
+            self,
+            "Confirmare",
+            "Sigur doriti sa reveniti la ecranul de autentificare?\n"
+            "Veti fi deconectat din contul curent.",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        session.clear_current_user()
+
+        self.stack.setCurrentIndex(self.PAGE_LOGIN)
+        self.update_status_bar()
