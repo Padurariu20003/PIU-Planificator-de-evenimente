@@ -92,52 +92,39 @@ def get_hall(hall_id: int) -> Optional[Dict]:
     }
 
 
-def create_hall(name: str, rows: int, cols: int) -> None:
+
+def create_hall(name: str, layout_data: List) -> None:
     name = (name or "").strip()
     if not name:
         raise ValueError("Numele salii este obligatoriu.")
-    if rows <= 0 or cols <= 0:
-        raise ValueError("Numarul de randuri si coloane trebuie sa fie pozitiv.")
-
-    layout = {"rows": rows, "cols": cols}
 
     conn = get_connection()
     cur = conn.cursor()
-
     cur.execute(
         "INSERT INTO halls (name, layout_json) VALUES (?, ?);",
-        (name, json.dumps(layout)),
+        (name, json.dumps(layout_data)),
     )
-
     conn.commit()
     conn.close()
 
 
-def update_hall(hall_id: int, name: str, rows: int, cols: int) -> None:
+def update_hall(hall_id: int, name: str, layout_data: List) -> None:
     name = (name or "").strip()
     if not name:
         raise ValueError("Numele salii este obligatoriu.")
-    if rows <= 0 or cols <= 0:
-        raise ValueError("Numarul de randuri si coloane trebuie sa fie pozitiv.")
-
-    layout = {"rows": rows, "cols": cols}
 
     conn = get_connection()
     cur = conn.cursor()
-
     cur.execute(
         """
         UPDATE halls
         SET name = ?, layout_json = ?
         WHERE id = ?;
         """,
-        (name, json.dumps(layout), hall_id),
+        (name, json.dumps(layout_data), hall_id),
     )
-
     conn.commit()
     conn.close()
-
-
 def delete_hall(hall_id: int) -> None:
     conn = get_connection()
     cur = conn.cursor()
