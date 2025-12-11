@@ -15,7 +15,7 @@ from PySide6.QtCore import Qt, Signal
 
 from services.auth_service import login as auth_login, create_user
 from core import session
-
+from core.validators import validate_email
 
 class RegisterDialog(QDialog):
     def __init__(self, parent=None) -> None:
@@ -71,6 +71,16 @@ class RegisterDialog(QDialog):
             return
 
         try:
+            email = validate_email(email)
+        except ValueError as ex:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                str(ex),
+            )
+            return
+
+        try:
             create_user(email, password)
         except ValueError as ex:
             QMessageBox.critical(
@@ -79,6 +89,7 @@ class RegisterDialog(QDialog):
                 str(ex),
             )
             return
+        self.email_edit.setText(email)
 
         QMessageBox.information(
             self,
@@ -153,12 +164,10 @@ class LoginView(QWidget):
 
         self.email_edit = QLineEdit()
         self.email_edit.setPlaceholderText("Email")
-        self.email_edit.setText("admin@eventease.local")
 
         self.password_edit = QLineEdit()
         self.password_edit.setPlaceholderText("Parola")
         self.password_edit.setEchoMode(QLineEdit.Password)
-        self.password_edit.setText("admin")
 
         for w in (self.email_edit, self.password_edit):
             w.setMinimumWidth(350)
@@ -198,6 +207,12 @@ class LoginView(QWidget):
 
         if not email or not password:
             QMessageBox.warning(self, "Eroare", "Introduceti emailul si parola.")
+            return
+        
+        try:
+            email = validate_email(email)
+        except ValueError as ex:
+            QMessageBox.warning(self, "Eroare", str(ex))
             return
 
         role = auth_login(email, password)

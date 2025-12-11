@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QFormLayout,
     QMessageBox,
+    QHeaderView,
 )
 from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
@@ -19,6 +20,7 @@ from services import event_service, booking_service
 from .admin_events_view import EventsTableModel
 from .seatmap_view import SeatSelectionDialog
 from core import session
+from core.validators import validate_email
 
 
 class BookingDialog(QDialog):
@@ -26,6 +28,16 @@ class BookingDialog(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle("Rezervare locuri")
+
+        screen = self.parent().screen() if self.parent() is not None else None
+        if screen is None:
+            from PySide6.QtWidgets import QApplication
+            screen = QApplication.primaryScreen()
+        if screen is not None:
+            rect = screen.availableGeometry()
+            width = int(rect.width() * 0.35)
+            height = int(rect.height() * 0.30)
+            self.resize(width, height)
 
         self._event = event
         self.selected_seats: List[str] = []
@@ -37,11 +49,19 @@ class BookingDialog(QDialog):
             f"({event['date']} {event['time']}, {event['hall_name']})"
         )
         event_label.setWordWrap(True)
-
         layout.addRow(event_label)
 
         self.name_edit = QLineEdit()
         self.email_edit = QLineEdit()
+
+        current_email, current_role = session.get_current_user()
+        current_email = (current_email or "").strip()
+        if current_email:
+            self.email_edit.setText(current_email)
+            self.email_edit.setReadOnly(True)
+            self.email_edit.setToolTip(
+                "Emailul este preluat automat din contul cu care sunteti autentificat."
+            )
 
         self.seats_display = QLineEdit()
         self.seats_display.setReadOnly(True)
@@ -58,35 +78,69 @@ class BookingDialog(QDialog):
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
             parent=self,
         )
-        buttons.accepted.connect(self.accept)
-        buttons.rejected.connect(self.reject)
 
+        buttons.accepted.connect(self.on_accept)
+        buttons.rejected.connect(self.reject)
         layout.addRow(buttons)
 
         self.select_seats_button.clicked.connect(self.on_select_seats_clicked)
 
     def on_select_seats_clicked(self) -> None:
         dialog = SeatSelectionDialog(self._event, parent=self)
-        if dialog.exec() == QDialog.Accepted:
-            seats = dialog.get_selected_seats()
-            if not seats:
-                QMessageBox.warning(
-                    self,
-                    "Atentie",
-                    "Nu ati selectat niciun loc.",
-                )
-                return
+        if dialog.exec() != QDialog.Accepted:
+            return
 
-            self.selected_seats = seats
-            self.seats_display.setText(", ".join(seats))
+        seats = dialog.get_selected_seats()
+        self.selected_seats = seats
+        self.seats_display.setText(", ".join(seats))
+
+    def on_accept(self) -> None:
+        name = self.name_edit.text().strip()
+        email = self.email_edit.text().strip()
+
+        if not name:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                "Introduceti numele.",
+            )
+            return
+
+        if not email:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                "Introduceti emailul.",
+            )
+            return
+
+        try:
+            email = validate_email(email)
+        except ValueError as ex:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                str(ex),
+            )
+            return
+
+        if not self.selected_seats:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                "Selectati cel putin un loc.",
+            )
+            return
+
+        self.email_edit.setText(email)
+        self.accept()
 
     def get_data(self) -> Dict:
         return {
             "name": self.name_edit.text().strip(),
             "email": self.email_edit.text().strip(),
-            "seats": self.selected_seats,
+            "seats": list(self.selected_seats),
         }
-
 
 class MyBookingsTableModel(QAbstractTableModel):
     def __init__(self, bookings: List[Dict], parent=None) -> None:
@@ -129,7 +183,7 @@ class MyBookingsTableModel(QAbstractTableModel):
             if section == 1:
                 return "Data/Ora"
             if section == 2:
-                return "Sală"
+                return "Sala"
             if section == 3:
                 return "Locuri"
             if section == 4:
@@ -149,6 +203,16 @@ class UserBookingsDialog(QDialog):
 
         self.setWindowTitle("Rezervarile mele")
 
+        screen = self.parent().screen() if self.parent() is not None else None
+        if screen is None:
+            from PySide6.QtWidgets import QApplication
+            screen = QApplication.primaryScreen()
+        if screen is not None:
+            rect = screen.availableGeometry()
+            width = int(rect.width() * 0.5)
+            height = int(rect.height() * 0.5)
+            self.resize(width, height)
+
         layout = QVBoxLayout(self)
 
         info_label = QLabel(
@@ -166,6 +230,10 @@ class UserBookingsDialog(QDialog):
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
+
+        header = self.table_view.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.Stretch)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
         buttons.rejected.connect(self.reject)
@@ -189,7 +257,7 @@ class UserEventsView(QWidget):
         main_layout.addWidget(title_label)
 
         info_label = QLabel(
-            "Selectati un eveniment din lista si apasasi pe „Rezerva locuri” "
+            "Selectati un eveniment din lista si apasati pe „Rezerva locuri” "
             "pentru a selecta locurile pe harta si a face o rezervare.\n"
             "Puteti vedea si „Rezervarile mele” facute cu email-ul dvs."
         )
@@ -222,13 +290,16 @@ class UserEventsView(QWidget):
         self.table_view.setSelectionMode(QTableView.SingleSelection)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
 
+        header = self.table_view.horizontalHeader()
+        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.Stretch)
+
         self.book_button.clicked.connect(self.on_book_clicked)
         self.refresh_button.clicked.connect(self.refresh_events)
         self.my_bookings_button.clicked.connect(self.on_my_bookings_clicked)
         self.back_button.clicked.connect(self.back_to_login.emit)
 
         self.refresh_events()
-
 
     def refresh_events(self) -> None:
         events = event_service.list_events()
@@ -255,13 +326,6 @@ class UserEventsView(QWidget):
             return
 
         data = dialog.get_data()
-        if not data["name"] or not data["email"] or not data["seats"]:
-            QMessageBox.warning(
-                self,
-                "Eroare",
-                "Completati numele, emailul si selectati cel putin un loc.",
-            )
-            return
 
         try:
             booking_service.create_booking(
@@ -271,21 +335,22 @@ class UserEventsView(QWidget):
                 seats=data["seats"],
             )
         except ValueError as ex:
-            QMessageBox.critical(
+            QMessageBox.warning(
                 self,
-                "Rezervare esuata",
+                "Eroare",
                 str(ex),
             )
             return
-
+        
         QMessageBox.information(
             self,
-            "Rezervare reusita",
+            "Succes",
             "Rezervarea a fost inregistrata cu succes.",
         )
 
     def on_my_bookings_clicked(self) -> None:
         email, role = session.get_current_user()
+        email = (email or "").strip()
         if not email:
             QMessageBox.information(
                 self,

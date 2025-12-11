@@ -14,12 +14,14 @@ from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
     QMessageBox,
-    QSpinBox,
+    QHeaderView,
 )
 from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
 from services import event_service, hall_service, booking_service
 from .seatmap_view import HallEditorWidget
+from core.validators import validate_date, validate_time
+
 
 class EventsTableModel(QAbstractTableModel):
     def __init__(self, events: List[Dict], parent=None) -> None:
@@ -41,13 +43,12 @@ class EventsTableModel(QAbstractTableModel):
 
         if col == 0:
             return event["title"]
-        elif col == 1:
+        if col == 1:
             return event["date"]
-        elif col == 2:
+        if col == 2:
             return event["time"]
-        elif col == 3:
+        if col == 3:
             return event["hall_name"]
-
         return None
 
     def headerData(self, section: int, orientation, role=Qt.DisplayRole):
@@ -63,7 +64,6 @@ class EventsTableModel(QAbstractTableModel):
                 return "Ora"
             if section == 3:
                 return "Sala"
-
         return None
 
     def set_events(self, events: List[Dict]) -> None:
@@ -97,13 +97,12 @@ class BookingsTableModel(QAbstractTableModel):
 
         if col == 0:
             return booking["name"]
-        elif col == 1:
+        if col == 1:
             return booking["email"]
-        elif col == 2:
+        if col == 2:
             return ", ".join(booking.get("seats", []))
-        elif col == 3:
+        if col == 3:
             return booking["created_at"]
-
         return None
 
     def headerData(self, section: int, orientation, role=Qt.DisplayRole):
@@ -119,7 +118,6 @@ class BookingsTableModel(QAbstractTableModel):
                 return "Locuri"
             if section == 3:
                 return "Creat la"
-
         return None
 
     def set_bookings(self, bookings: List[Dict]) -> None:
@@ -147,25 +145,29 @@ class HallsTableModel(QAbstractTableModel):
         col = index.column()
 
         layout_data = hall.get("layout", [])
-        count = 0
+        seat_count = 0
+
         if isinstance(layout_data, list):
-            count = len([x for x in layout_data if x.get("type") == "seat"])
+            seat_count = len([c for c in layout_data if c.get("type") == "seat"])
         elif isinstance(layout_data, dict):
-            count = layout_data.get("rows", 0) * layout_data.get("cols", 0)
+            rows = layout_data.get("rows", 0)
+            cols = layout_data.get("cols", 0)
+            seat_count = rows * cols
 
         if col == 0:
             return hall["name"]
-        elif col == 1:
-            return f"{count} locuri"
-
+        if col == 1:
+            return f"{seat_count} locuri"
         return None
 
     def headerData(self, section: int, orientation, role=Qt.DisplayRole):
         if role != Qt.DisplayRole:
             return None
         if orientation == Qt.Horizontal:
-            if section == 0: return "Sala"
-            if section == 1: return "Capacitate"
+            if section == 0:
+                return "Sala"
+            if section == 1:
+                return "Capacitate"
         return None
 
     def set_halls(self, halls: List[Dict]) -> None:
@@ -194,6 +196,9 @@ class EventDialog(QDialog):
         self.time_edit = QLineEdit()
         self.hall_combo = QComboBox()
 
+        self.date_edit.setPlaceholderText("2025-12-31")
+        self.time_edit.setPlaceholderText("19:30")
+
         for hall in halls:
             self.hall_combo.addItem(hall["name"], hall["id"])
 
@@ -215,12 +220,45 @@ class EventDialog(QDialog):
                     break
 
         buttons = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, parent=self
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
+            parent=self,
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.on_accept)
         buttons.rejected.connect(self.reject)
-
         form_layout.addRow(buttons)
+
+    def on_accept(self) -> None:
+        """
+        Validam campurile. Daca ceva e gresit, afisam mesaj si NU inchidem fereastra.
+        Daca totul e ok, apelam self.accept().
+        """
+        title = self.title_edit.text().strip()
+        date_str = self.date_edit.text().strip()
+        time_str = self.time_edit.text().strip()
+
+        if not title:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                "Titlul este obligatoriu.",
+            )
+            return
+
+        try:
+            date_str = validate_date(date_str)
+            time_str = validate_time(time_str)
+        except ValueError as ex:
+            QMessageBox.warning(
+                self,
+                "Eroare",
+                str(ex),
+            )
+            return
+
+        self.date_edit.setText(date_str)
+        self.time_edit.setText(time_str)
+
+        self.accept()
 
     def get_data(self) -> Dict:
         return {
@@ -257,18 +295,20 @@ class BookingsDialog(QDialog):
         self.table_view.setSelectionMode(QTableView.SingleSelection)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
 
+        header = self.table_view.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
+
         buttons = QDialogButtonBox(QDialogButtonBox.Close, parent=self)
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         buttons.button(QDialogButtonBox.Close).clicked.connect(self.close)
-
         layout.addWidget(buttons)
 
 
 class HallDialog(QDialog):
     def __init__(self, hall: Optional[Dict] = None, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Configurare Sala")
+        self.setWindowTitle("Configurare sala")
 
         self.resize(1400, 900)
         self.setWindowState(self.windowState() | Qt.WindowMaximized)
@@ -280,13 +320,12 @@ class HallDialog(QDialog):
         form_layout.addRow("Nume sala:", self.name_edit)
         layout.addLayout(form_layout)
 
-        current_layout = []
+        current_layout: List[Dict] = []
         if hall:
             self.name_edit.setText(hall["name"])
-            raw = hall.get("layout", [])
-            if isinstance(raw, list):
-                current_layout = raw
-
+            raw_layout = hall.get("layout", [])
+            if isinstance(raw_layout, list):
+                current_layout = raw_layout
 
         self.editor = HallEditorWidget(current_layout, self)
         layout.addWidget(self.editor)
@@ -299,7 +338,7 @@ class HallDialog(QDialog):
     def get_data(self) -> Dict:
         return {
             "name": self.name_edit.text().strip(),
-            "layout": self.editor.get_data()
+            "layout": self.editor.get_data(),
         }
 
 
@@ -307,7 +346,7 @@ class HallsDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Administrare sali")
-        self.resize(700, 500)
+        self.resize(900, 600)
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel("Gestionati salile si configuratia locurilor."))
@@ -330,6 +369,10 @@ class HallsDialog(QDialog):
         self.table_view.setModel(self._model)
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
+        self.table_view.setEditTriggers(QTableView.NoEditTriggers)
+
+        header = self.table_view.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
 
         self.refresh_halls()
 
@@ -344,9 +387,10 @@ class HallsDialog(QDialog):
     def refresh_halls(self):
         self._model.set_halls(hall_service.get_all_halls())
 
-    def get_selected(self):
+    def get_selected(self) -> Optional[Dict]:
         idx = self.table_view.currentIndex()
-        if not idx.isValid(): return None
+        if not idx.isValid():
+            return None
         return self._model.get_hall_at_row(idx.row())
 
     def on_add(self):
@@ -361,7 +405,8 @@ class HallsDialog(QDialog):
 
     def on_edit(self):
         hall = self.get_selected()
-        if not hall: return
+        if not hall:
+            return
         d = HallDialog(hall, parent=self)
         if d.exec() == QDialog.Accepted:
             data = d.get_data()
@@ -373,9 +418,12 @@ class HallsDialog(QDialog):
 
     def on_delete(self):
         hall = self.get_selected()
-        if hall and QMessageBox.question(self, "Confirmare", "Sigur stergeti sala?") == QMessageBox.Yes:
+        if hall and QMessageBox.question(
+            self, "Confirmare", "Sigur stergeti sala?"
+        ) == QMessageBox.Yes:
             hall_service.delete_hall(hall["id"])
             self.refresh_halls()
+
 
 class AdminEventsView(QWidget):
     back_to_login = Signal()
@@ -394,7 +442,6 @@ class AdminEventsView(QWidget):
         layout.addWidget(self.table_view)
 
         button_layout = QHBoxLayout()
-
         self.add_button = QPushButton("Adauga eveniment")
         self.edit_button = QPushButton("Editeaza")
         self.delete_button = QPushButton("Sterge")
@@ -409,7 +456,6 @@ class AdminEventsView(QWidget):
         button_layout.addWidget(self.manage_halls_button)
         button_layout.addStretch()
         button_layout.addWidget(self.back_button)
-
         layout.addLayout(button_layout)
 
         self._events: List[Dict] = []
@@ -418,6 +464,9 @@ class AdminEventsView(QWidget):
         self.table_view.setSelectionBehavior(QTableView.SelectRows)
         self.table_view.setSelectionMode(QTableView.SingleSelection)
         self.table_view.setEditTriggers(QTableView.NoEditTriggers)
+
+        header = self.table_view.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.Stretch)
 
         self.refresh_events()
 
@@ -442,18 +491,15 @@ class AdminEventsView(QWidget):
         halls = hall_service.get_all_halls()
         if not halls:
             QMessageBox.warning(
-                self, "Eroare", "Nu exista nicio sala definita. Verificati baza de date."
+                self,
+                "Eroare",
+                "Nu exista nicio sala definita. Verificati baza de date.",
             )
             return
 
         dialog = EventDialog(halls, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
-            if not data["title"] or not data["date"] or not data["time"]:
-                QMessageBox.warning(
-                    self, "Eroare", "Titlul, data si ora sunt obligatorii."
-                )
-                return
 
             event_service.create_event(
                 data["title"],
@@ -468,7 +514,9 @@ class AdminEventsView(QWidget):
         event = self.get_selected_event()
         if event is None:
             QMessageBox.information(
-                self, "Informatii", "Selectati mai intai un eveniment din lista."
+                self,
+                "Informatii",
+                "Selectati mai intai un eveniment din lista.",
             )
             return
 
@@ -476,12 +524,7 @@ class AdminEventsView(QWidget):
         dialog = EventDialog(halls, event=event, parent=self)
         if dialog.exec() == QDialog.Accepted:
             data = dialog.get_data()
-            if not data["title"] or not data["date"] or not data["time"]:
-                QMessageBox.warning(
-                    self, "Eroare", "Titlul, data si ora sunt obligatorii."
-                )
-                return
-
+            
             event_service.update_event(
                 event["id"],
                 data["title"],
@@ -496,7 +539,9 @@ class AdminEventsView(QWidget):
         event = self.get_selected_event()
         if event is None:
             QMessageBox.information(
-                self, "Informatii", "Selectati mai intai un eveniment din lista."
+                self,
+                "Informatii",
+                "Selectati mai intai un eveniment din lista.",
             )
             return
 
@@ -506,7 +551,6 @@ class AdminEventsView(QWidget):
             f"Sigur doriti sa stergeti evenimentul '{event['title']}'?",
             QMessageBox.Yes | QMessageBox.No,
         )
-
         if reply == QMessageBox.Yes:
             event_service.delete_event(event["id"])
             self.refresh_events()
@@ -528,4 +572,3 @@ class AdminEventsView(QWidget):
         dialog = HallsDialog(parent=self)
         dialog.exec()
         self.refresh_events()
-

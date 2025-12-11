@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QBrush, QPen, QColor, QPainter, QFont
 from PySide6.QtCore import QRectF, Qt
 
-# Importam generatoarele
 from .layout_generator import (
     generate_round_table_set, generate_rect_table_set, generate_decor,
     center_layout, apply_rotation_to_group,
@@ -107,10 +106,16 @@ class GraphicSeat(GraphicItemBase):
     def mousePressEvent(self, event):
         if self.is_reserved:
             return
-        if self.flags() & QGraphicsItem.ItemIsSelectable:
+
+        selectable = bool(self.flags() & QGraphicsItem.ItemIsSelectable)
+        movable = bool(self.flags() & QGraphicsItem.ItemIsMovable)
+
+        if selectable and not movable:
             self.is_selected = not self.is_selected
             self.update_color()
+
         super().mousePressEvent(event)
+
 
 
 class GraphicShape(GraphicItemBase):
@@ -366,16 +371,28 @@ class SeatMapView(QGraphicsView):
 
     def _draw(self, item: MapItem):
         gfx = None
+
         if item.type == "seat":
             cid = str(item.id).strip().upper()
             res = cid in self._reserved_seats
             gfx = GraphicSeat(item, res)
-            if not self.editable and not res:
+
+            if self.editable:
+                gfx.setFlag(QGraphicsItem.ItemIsMovable, True)
                 gfx.setFlag(QGraphicsItem.ItemIsSelectable, True)
+            else:
+                if not res:
+                    gfx.setFlag(QGraphicsItem.ItemIsSelectable, True)
+
         else:
             gfx = GraphicShape(item)
+            if self.editable:
+                gfx.setFlag(QGraphicsItem.ItemIsMovable, True)
+                gfx.setFlag(QGraphicsItem.ItemIsSelectable, True)
+
         if gfx:
             self.scene.addItem(gfx)
+
 
     def add_item(self, item):
         self.model.append(item)
@@ -390,7 +407,22 @@ class SeatMapView(QGraphicsView):
         self.load_data([x.to_dict() for x in self.model])
 
     def get_layout_data(self):
-        return [x.to_dict() for x in self.model]
+        layout = []
+
+        for item in self.scene.items():
+            if isinstance(item, (GraphicSeat, GraphicShape)):
+                data = item.data  # MapItem
+
+                pos = item.pos()
+                data.x = pos.x()
+                data.y = pos.y()
+
+                data.rotation = item.rotation()
+
+                layout.append(data.to_dict())
+
+        return layout
+
 
     def get_selected_seats(self):
         return [i.data.id for i in self.scene.items() if isinstance(i, GraphicSeat) and i.is_selected]

@@ -92,20 +92,42 @@ def get_hall(hall_id: int) -> Optional[Dict]:
     }
 
 
-
-def create_hall(name: str, layout_data: List) -> None:
+def create_hall(name: str, layout_or_rows, cols: Optional[int] = None) -> None:
     name = (name or "").strip()
     if not name:
         raise ValueError("Numele salii este obligatoriu.")
+    
+    if cols is None and isinstance(layout_or_rows, (list, dict)):
+        layout = layout_or_rows
+        if not layout:
+            raise ValueError("Configuratia salii nu poate fi goala.")
+    else:
+        try:
+            rows = int(layout_or_rows)
+        except (TypeError, ValueError):
+            raise ValueError("Numarul de randuri trebuie sa fie un numar intreg pozitiv.")
+
+        if cols is None:
+            raise ValueError("Numarul de coloane este obligatoriu.")
+        try:
+            cols_int = int(cols)
+        except (TypeError, ValueError):
+            raise ValueError("Numarul de coloane trebuie sa fie un numar intreg pozitiv.")
+
+        if rows <= 0 or cols_int <= 0:
+            raise ValueError("Numarul de randuri si coloane trebuie sa fie pozitiv.")
+
+        layout = {"rows": rows, "cols": cols_int}
 
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
         "INSERT INTO halls (name, layout_json) VALUES (?, ?);",
-        (name, json.dumps(layout_data)),
+        (name, json.dumps(layout)),
     )
     conn.commit()
     conn.close()
+
 
 
 def update_hall(hall_id: int, name: str, layout_data: List) -> None:

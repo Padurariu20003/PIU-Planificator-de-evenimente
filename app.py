@@ -16,7 +16,8 @@ def main() -> None:
     app = QApplication(sys.argv)
 
     window = MainWindow()
-    window.show()
+    #window.show()
+    window.showMaximized()
 
     sys.exit(app.exec())
 
