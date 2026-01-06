@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
 from services import event_service, hall_service, booking_service
-from .seatmap_view import HallEditorWidget
+from .seatmap import HallEditorWidget
 from core.validators import validate_date, validate_time
 
 
@@ -86,7 +86,7 @@ class BookingsTableModel(QAbstractTableModel):
         return len(self._bookings)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return 4
+        return 5
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid() or role != Qt.DisplayRole:
@@ -103,6 +103,8 @@ class BookingsTableModel(QAbstractTableModel):
             return ", ".join(booking.get("seats", []))
         if col == 3:
             return booking["created_at"]
+        if col == 4:
+            return f"{booking.get('total_price', 0):.2f} lei"
         return None
 
     def headerData(self, section: int, orientation, role=Qt.DisplayRole):
@@ -118,6 +120,8 @@ class BookingsTableModel(QAbstractTableModel):
                 return "Locuri"
             if section == 3:
                 return "Creat la"
+            if section == 4:
+                return "Total"
         return None
 
     def set_bookings(self, bookings: List[Dict]) -> None:
@@ -150,9 +154,8 @@ class HallsTableModel(QAbstractTableModel):
         if isinstance(layout_data, list):
             seat_count = len([c for c in layout_data if c.get("type") == "seat"])
         elif isinstance(layout_data, dict):
-            rows = layout_data.get("rows", 0)
-            cols = layout_data.get("cols", 0)
-            seat_count = rows * cols
+            items = layout_data.get("items", [])
+            seat_count = len([c for c in items if c.get("type") == "seat"])
 
         if col == 0:
             return hall["name"]
@@ -327,7 +330,12 @@ class HallDialog(QDialog):
             if isinstance(raw_layout, list):
                 current_layout = raw_layout
 
-        self.editor = HallEditorWidget(current_layout, self)
+        self.zones = (hall.get("zones") if hall else None) or [
+            {"id": "Z1", "name": "VIP", "price": 100.0, "color": "#ED94FF"},
+            {"id": "Z2", "name": "Standard", "price": 50.0, "color": "#92FCA7"},
+        ]
+
+        self.editor = HallEditorWidget(current_layout, parent=self, zones=self.zones)
         layout.addWidget(self.editor)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -336,9 +344,11 @@ class HallDialog(QDialog):
         layout.addWidget(buttons)
 
     def get_data(self) -> Dict:
+        data = self.editor.get_data()
         return {
             "name": self.name_edit.text().strip(),
-            "layout": self.editor.get_data(),
+            "layout": data["items"],
+            "zones": data["zones"],
         }
 
 
@@ -398,7 +408,7 @@ class HallsDialog(QDialog):
         if d.exec() == QDialog.Accepted:
             data = d.get_data()
             try:
-                hall_service.create_hall(data["name"], data["layout"])
+                hall_service.create_hall(data["name"], data["layout"], zones=data["zones"])
                 self.refresh_halls()
             except Exception as e:
                 QMessageBox.warning(self, "Eroare", str(e))
@@ -411,7 +421,7 @@ class HallsDialog(QDialog):
         if d.exec() == QDialog.Accepted:
             data = d.get_data()
             try:
-                hall_service.update_hall(hall["id"], data["name"], data["layout"])
+                hall_service.update_hall(hall["id"], data["name"], data["layout"], zones=data["zones"])
                 self.refresh_halls()
             except Exception as e:
                 QMessageBox.warning(self, "Eroare", str(e))

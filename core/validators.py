@@ -1,4 +1,3 @@
-# core/validators.py
 import re
 from datetime import datetime
 

@@ -9,6 +9,13 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    cur = conn.cursor()
+    cur.execute(f"PRAGMA table_info({table});")
+    cols = [r[1] for r in cur.fetchall()]
+    if column not in cols:
+        cur.execute(ddl)
+        conn.commit()
 
 def init_db() -> None:
     conn = get_connection()
@@ -58,10 +65,19 @@ def init_db() -> None:
             email TEXT NOT NULL,
             seats_json TEXT NOT NULL,
             created_at TEXT NOT NULL,
+            total_price REAL NOT NULL DEFAULT 0,
             FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE
         );
         """
     )
+
+    _ensure_column(
+        conn,
+        "bookings",
+        "total_price",
+        "ALTER TABLE bookings ADD COLUMN total_price REAL NOT NULL DEFAULT 0;",
+    )
+
 
     conn.commit()
     conn.close()

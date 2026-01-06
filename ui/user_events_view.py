@@ -16,9 +16,9 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QAbstractTableModel, QModelIndex
 
-from services import event_service, booking_service
+from services import event_service, booking_service, hall_service
 from .admin_events_view import EventsTableModel
-from .seatmap_view import SeatSelectionDialog
+from .seatmap import SeatSelectionDialog
 from core import session
 from core.validators import validate_email
 
@@ -67,6 +67,14 @@ class BookingDialog(QDialog):
         self.seats_display.setReadOnly(True)
         self.seats_display.setPlaceholderText("Niciun loc selectat")
 
+        self.total_label = QLabel("Total: 0.00 lei")
+        layout.addRow("Total:", self.total_label)
+        self.breakdown_label = QLabel("-")
+        self.breakdown_label.setWordWrap(True)
+        self.breakdown_label.setTextFormat(Qt.RichText) 
+
+        layout.addRow("Detalii pe zone:", self.breakdown_label)
+
         self.select_seats_button = QPushButton("Selecteaza locuri...")
 
         layout.addRow("Nume:", self.name_edit)
@@ -93,6 +101,62 @@ class BookingDialog(QDialog):
         seats = dialog.get_selected_seats()
         self.selected_seats = seats
         self.seats_display.setText(", ".join(seats))
+
+        hall = hall_service.get_hall(self._event["hall_id"]) or {}
+        layout_items = hall.get("layout", []) or []
+        zones = hall.get("zones", []) or []
+
+        zone_meta = {}
+        for z in zones:
+            zid = str(z.get("id") or "").strip()
+            if not zid:
+                continue
+            try:
+                price = float(z.get("price", 0) or 0)
+            except Exception:
+                price = 0.0
+            zone_meta[zid] = {
+                "name": str(z.get("name") or zid),
+                "price": price,
+                "color": str(z.get("color") or "#DDDDDD"),
+            }
+
+        seat_to_zone = {}
+        for it in layout_items:
+            if it.get("type") == "seat":
+                sid = str(it.get("id") or "").strip()
+                zid = str(it.get("zone_id") or "Z1").strip() or "Z1"
+                if sid:
+                    seat_to_zone[sid] = zid
+
+        counts = {}
+        for sid in seats:
+            sid = str(sid).strip()
+            zid = seat_to_zone.get(sid, "Z1")
+            counts[zid] = counts.get(zid, 0) + 1
+
+        lines = []
+        total_calc = 0.0
+        for zid, cnt in sorted(counts.items()):
+            meta = zone_meta.get(zid, {"name": zid, "price": 0.0, "color": "#DDDDDD"})
+            price = float(meta["price"])
+            subtotal = price * cnt
+            total_calc += subtotal
+
+            color = meta["color"]
+            name = meta["name"]
+
+            lines.append(
+                f"<span style='display:inline-block;width:12px;height:12px;"
+                f"background:{color};border:1px solid #000;margin-right:6px;'></span>"
+                f"<b>{zid} - {name}</b>: {cnt} x {price:.2f} = <b>{subtotal:.2f} lei</b>"
+            )
+
+        self.breakdown_label.setText("<br>".join(lines) if lines else "-")
+
+        total = total_calc
+        self.total_label.setText(f"{total:.2f} lei")
+
 
     def on_accept(self) -> None:
         name = self.name_edit.text().strip()
@@ -151,7 +215,7 @@ class MyBookingsTableModel(QAbstractTableModel):
         return len(self._bookings)
 
     def columnCount(self, parent=QModelIndex()) -> int:
-        return 5
+        return 6
 
     def data(self, index: QModelIndex, role=Qt.DisplayRole):
         if not index.isValid() or role != Qt.DisplayRole:
@@ -170,6 +234,8 @@ class MyBookingsTableModel(QAbstractTableModel):
             return ", ".join(booking.get("seats", []))
         elif col == 4:
             return booking["created_at"]
+        elif col == 5:
+            return f"{booking.get('total_price', 0):.2f} lei"
 
         return None
 
@@ -188,6 +254,8 @@ class MyBookingsTableModel(QAbstractTableModel):
                 return "Locuri"
             if section == 4:
                 return "Creat la"
+            if section == 5:
+                return "Total"
 
         return None
 
