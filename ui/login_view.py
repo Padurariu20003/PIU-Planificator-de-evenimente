@@ -201,6 +201,11 @@ class LoginView(QWidget):
         self.guest_button.clicked.connect(self.on_guest_clicked)
         self.exit_button.clicked.connect(self.on_exit_clicked)
 
+    def clear_fields(self):
+        self.email_edit.clear()
+        self.password_edit.clear()
+        self.email_edit.setFocus()
+
     def on_login_clicked(self) -> None:
         email = self.email_edit.text().strip()
         password = self.password_edit.text()

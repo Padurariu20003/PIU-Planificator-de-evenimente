@@ -1,27 +1,32 @@
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QStackedWidget,
-    QMessageBox,
-)
+from PySide6.QtWidgets import QMainWindow, QStackedWidget, QMessageBox, QToolBar, QApplication
+from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
 
 from .login_view import LoginView
-from .admin_events_view import AdminEventsView
-from .user_events_view import UserEventsView
+from .admin.view import AdminEventsView 
+from .user.view import UserEventsView
 from core import session
-
+from .themes import LIGHT_THEME, DARK_THEME
 
 class MainWindow(QMainWindow):
-
     PAGE_LOGIN = 0
     PAGE_ADMIN = 1
     PAGE_USER = 2
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-
         self.setWindowTitle("EventEase - Planificator de evenimente")
         self.resize(900, 600)
+        self.is_dark_mode = False
+        self.apply_theme() 
+        
+        toolbar = QToolBar("Main Toolbar")
+        toolbar.setMovable(False) 
+        self.addToolBar(Qt.TopToolBarArea, toolbar)
+
+        self.toggle_theme_action = QAction("🌙 Dark Mode", self)
+        self.toggle_theme_action.triggered.connect(self.on_toggle_theme)
+        toolbar.addAction(self.toggle_theme_action)
 
         self.stack = QStackedWidget(self)
         self.setCentralWidget(self.stack)
@@ -42,21 +47,32 @@ class MainWindow(QMainWindow):
 
         self.status = self.statusBar()
         self.update_status_bar()
-
         self.stack.setCurrentIndex(self.PAGE_LOGIN)
+
+    def on_toggle_theme(self):
+        self.is_dark_mode = not self.is_dark_mode
+        if self.is_dark_mode:
+            self.toggle_theme_action.setText("☀️ Light Mode")
+        else:
+            self.toggle_theme_action.setText("🌙 Dark Mode")
+        self.apply_theme() 
+
+    def apply_theme(self):
+        app = QApplication.instance()
+        if app:
+            if self.is_dark_mode:
+                app.setStyleSheet(DARK_THEME)
+            else:
+                app.setStyleSheet(LIGHT_THEME)
 
     def update_status_bar(self) -> None:
         email, role = session.get_current_user()
-
         if not email and not role:
             self.status.showMessage("Neautentificat", 0)
         elif role == "admin":
             self.status.showMessage(f"Autentificat ca administrator: {email}", 0)
         else:
-            if email:
-                self.status.showMessage(f"Autentificat ca utilizator: {email}", 0)
-            else:
-                self.status.showMessage("Utilizator vizitator (fara email)", 0)
+            self.status.showMessage(f"Autentificat ca utilizator: {email}" if email else "Utilizator vizitator", 0)
 
     def on_login_admin(self) -> None:
         self.stack.setCurrentIndex(self.PAGE_ADMIN)
@@ -68,17 +84,15 @@ class MainWindow(QMainWindow):
 
     def on_logout(self) -> None:
         reply = QMessageBox.question(
-            self,
-            "Confirmare",
-            "Sigur doriti sa reveniti la ecranul de autentificare?\n"
-            "Veti fi deconectat din contul curent.",
-            QMessageBox.Yes | QMessageBox.No,
+            self, "Confirmare", 
+            "Sigur doriti sa va deconectati?", 
+            QMessageBox.Yes | QMessageBox.No
         )
-
-        if reply != QMessageBox.Yes:
-            return
+        if reply != QMessageBox.Yes: return
 
         session.clear_current_user()
-
+        
+        self.login_view.clear_fields() 
+        
         self.stack.setCurrentIndex(self.PAGE_LOGIN)
         self.update_status_bar()

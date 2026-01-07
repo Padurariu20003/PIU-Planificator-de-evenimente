@@ -1,6 +1,6 @@
 import re
 import math
-from typing import List, Dict,Optional, Set
+from typing import List, Dict, Optional, Set
 
 from PySide6.QtWidgets import (
     QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsEllipseItem,
@@ -107,24 +107,26 @@ class GraphicSeat(GraphicItemBase):
     def update_color(self):
         if self.is_reserved:
             c = COLORS["reserved"]
-        elif self.is_selected or self.isSelected():
+        elif self.is_selected: 
             c = COLORS["selected"]
         else:
-            c = self.base_color
+            if self.isSelected():
+                 c = COLORS["selected"]
+            else:
+                 c = self.base_color
         self.visual_rect.setBrush(QBrush(QColor(c)))
 
     def mousePressEvent(self, event):
         if self.is_reserved:
             return
 
-        selectable = bool(self.flags() & QGraphicsItem.ItemIsSelectable)
-        movable = bool(self.flags() & QGraphicsItem.ItemIsMovable)
+        if self.flags() & QGraphicsItem.ItemIsMovable:
+            super().mousePressEvent(event)
+            return
 
-        if selectable and not movable:
+        if event.button() == Qt.LeftButton:
             self.is_selected = not self.is_selected
             self.update_color()
-
-        super().mousePressEvent(event)
 
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedHasChanged:
@@ -157,7 +159,6 @@ class GraphicShape(GraphicItemBase):
 
         self.visual_item.setAcceptedMouseButtons(Qt.NoButton)
         self.text.setAcceptedMouseButtons(Qt.NoButton)
-
 
 class GhostItem(QGraphicsItem):
     def __init__(self):
@@ -343,7 +344,6 @@ class InteractiveMapScene(QGraphicsScene):
             self.parent().add_item(mi)
         super().mousePressEvent(event)
 
-
 class SeatMapView(QGraphicsView):
     def __init__(self, layout_data=None, reserved_seats=None, parent=None, editable=False, zones=None):
         super().__init__(parent)
@@ -437,14 +437,11 @@ class SeatMapView(QGraphicsView):
             else:
                 gfx.setToolTip(str(item.id))
 
-
             if self.editable:
                 gfx.setFlag(QGraphicsItem.ItemIsMovable, True)
                 gfx.setFlag(QGraphicsItem.ItemIsSelectable, True)
             else:
-                if not res:
-                    gfx.setFlag(QGraphicsItem.ItemIsSelectable, True)
-
+                pass 
         else:
             gfx = GraphicShape(item)
             if self.editable:
@@ -472,7 +469,7 @@ class SeatMapView(QGraphicsView):
 
         for item in self.scene.items():
             if isinstance(item, (GraphicSeat, GraphicShape)):
-                data = item.data  # MapItem
+                data = item.data 
 
                 pos = item.pos()
                 data.x = pos.x()
