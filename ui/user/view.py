@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QHBoxLayout, QLineEdit, 
-    QTableView, QPushButton, QMessageBox, QHeaderView
+    QTableView, QPushButton, QMessageBox, QHeaderView, QDialog
 )
 from PySide6.QtCore import Qt, Signal
 from services import event_service, booking_service

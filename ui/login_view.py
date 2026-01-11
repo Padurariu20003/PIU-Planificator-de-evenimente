@@ -155,8 +155,9 @@ class LoginView(QWidget):
 
         info_label = QLabel(
             "Introduceti emailul si parola pentru autentificare.<br>"
-            "Cont implicit administrator: <b>admin@eventease.local</b> / parola: <b>admin</b>"
+            #"Cont implicit administrator: <b>admin@eventease.local</b> / parola: <b>admin</b>"
         )
+
         info_label.setObjectName("InfoLabel")
         info_label.setAlignment(Qt.AlignCenter)
         info_label.setWordWrap(True)
